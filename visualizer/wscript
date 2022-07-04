@@ -32,7 +32,7 @@ def prerequisites(ctx):
 		# Ubuntu.
 		ctx.exec_command2(
 			'apt -y install ' +
-				'pkg-config qt5-default libqcustomplot-dev ' +
+				'pkg-config libqcustomplot-dev ' +
 				'libyaml-cpp-dev libopencv-dev'
 		)
 	elif sys.platform == 'win32' and os.name == 'nt' and os.path.sep == '/':
