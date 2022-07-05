@@ -1,140 +1,191 @@
 #include "Enums.hpp"
 
-#include <visualizer.hpp>
-
 #include <iostream>
 #include <cstdlib>
-using namespace std;
 
 #include <unistd.h>
 
-#define DEBUG(x) do{ std::cout << #x << " = " << x << std::endl; }while(0)
+#include <opencv2/opencv.hpp>
 
-#include "opencv2/opencv.hpp"
-using namespace cv;
+#define DEBUG(x) do{ printf("DEBUG - %s\n", x); }while(false)
 
-int main()
+#define SOURCE		1
+#define HSV			1
+#define MASK		1
+#define CONTOUR		1
+#define RESULT		1
+
+void process(std::string ipath, std::string opath)
 {
-	Mat src = cv::imread("data/stop_sign.jpg");
-	Mat src2 = cv::imread("data/1l.jpg");
+	cv::Mat src = cv::imread(ipath);
 	if(src.empty())
 	{
-		throw runtime_error("Cannot open image!");
+		throw std::runtime_error("Cannot open image!");
 	}
 
-	visualizer::load_cfg("data/main.visualizer.yaml");
+	///*
+	//DISPLAY NORMAL SOURCE
+	DEBUG("START NORMAL DISPLAY");
 
-	const uint16_t width = 10;
-	const uint16_t height = 20;
-	static uint8_t pix[width*height*3];
-	for(uint16_t y = 0; y < height; y++)
-	{
-		for(uint16_t x = 0; x < width; x++)
-		{
-			uint32_t i = (y*width + x)*3;
-			// Red.
-			pix[i+0] = 0;
-			pix[i+1] = 0;
-			pix[i+2] = 255;
-		}
-	}
+	std::string normal_name = opath + "_src.jpg";
 
-	for(uint16_t y = 3; y < height-3; y++)
-	{
-		for(uint16_t x = 3; x < width-3; x++)
-		{
-			uint32_t i = (y*width + x)*3;
-			// Blue.
-			pix[i+0] = 255;
-			pix[i+1] = 0;
-			pix[i+2] = 0;
-		}
-	}
-	
-//////////////////////////////////////////////////////////////////////////////////	
+#if SOURCE
+	cv::imwrite(normal_name, src);
+#endif
 
-	/*
+	DEBUG("END NORMAL DISPLAY");
+	//*/
+
+	///*
 	//HSV CONVERT
-	Mat hsv;
+	DEBUG("START HSV CONVERT");
+
+	std::string hsv_name = opath + "_hsv.jpg";
+	cv::Mat hsv, hsv_display;
 
 	cv::cvtColor(src, hsv, cv::COLOR_BGR2HSV);
 
-	visualizer::img::show("s", hsv);
-	*/
-	
-	/*
-	//EDGE DETECTION
-	Mat edge_x, edge_y, edge;
-	
-	cv::Scharr(src, edge_x, -1, 1, 0);
-	cv::Scharr(src, edge_y, -1, 0, 1);
-	
-	cv::addWeighted(edge_x, 0.5, edge_y, 0.5, 0, edge);
+	cv::cvtColor(hsv, hsv_display, cv::COLOR_HSV2BGR);
 
-	visualizer::img::show("s", edge);
-	*/
+#if HSV
+	cv::imwrite(hsv_name, hsv_display);
+#endif
 
-	/*
-	//SIFT
-	auto siftPtr = cv::SIFT::create();
-    std::vector<cv::KeyPoint> keypoints;
-    siftPtr->detect(src, keypoints);
+	DEBUG("END HSV CONVERT");
+	//*/
 
-	Mat sift;
-	cv::drawKeypoints(src, keypoints, sift);
+	///*
+	//CUT OUT COLOURS
+	DEBUG("START COLOUR MASKING");
 
-	visualizer::img::show("s", sift);
-	*/
-	
-	/*
-	//SEGMENTATION
-	Mat segKernel = (Mat_<float>(3, 3) << 1, 1, 1, 1, -8, 1, 1, 1, 1);
-	
-	Mat laplace;
-	cv::filter2D(src, laplace, CV_32F, segKernel);
-	Mat sharp;
-	src.convertTo(sharp, CV_32F);
-	Mat result = sharp - laplace;
-	
-	result.convertTo(result, CV_8UC3);
-	laplace.convertTo(laplace, CV_8UC3);
-	
-	visualizer::img::show("s", result);
-	
-	Mat binary;
-	cv::cvtColor(result, binary, COLOR_BGR2GRAY);
-	cv::threshold(binary, binary, 40, 255, THRESH_BINARY | THRESH_OTSU);
-	
-	visualizer::img::show("v", binary);
-	*/
+	std::string masked_name = opath + "_mask.jpg";
+	cv::Mat r_mask_l, r_mask_h, b_mask_l, b_mask_h, y_mask_l, y_mask_h, mask, masked, masked_display;
 
-//////////////////////////////////////////////////////////////////////////////////	
+	cv::inRange(hsv, cv::Scalar(0, 120, 70), cv::Scalar(10, 255, 255), r_mask_l);
+	cv::inRange(hsv, cv::Scalar(170, 120, 70), cv::Scalar(180, 255, 255), r_mask_h);
+	//cv::inRange(hsv, cv::Scalar(20, 150, 0), cv::Scalar(30, 255, 255), b_mask_l);
+	cv::inRange(hsv, cv::Scalar(20, 150, 0), cv::Scalar(30, 255, 255), b_mask_h);
+	//cv::inRange(hsv, cv::Scalar(100, 100, 100), cv::Scalar(140, 255, 255), y_mask_l);
+	cv::inRange(hsv, cv::Scalar(100, 100, 100), cv::Scalar(140, 255, 255), y_mask_h);
+	mask = r_mask_l + r_mask_h /*+ b_mask_l*/ + b_mask_h /*+ y_mask_l*/ + y_mask_h;
+	cv::bitwise_and(hsv, hsv, masked, mask);
 
-	visualizer::img::show("src", pix, width, height);
-	visualizer::img::show("h", src);
-	visualizer::img::show("r", src2);
+	cv::cvtColor(masked, masked_display, cv::COLOR_HSV2BGR);
 
-	int th_start_h0 = 20;
+#if MASK
+	cv::imwrite(masked_name, masked_display);
+#endif
 
-	while(true)
+	DEBUG("END COLOUR MASKING");
+	//*/
+
+	///*
+	//FIND CONTOURS
+	DEBUG("START CONTOUR SEARCH");
+
+	std::string contour_name = opath + "_contours.jpg";
+	cv::Mat grayscale, binary, contour;
+	std::vector<std::vector<cv::Point>> contours;
+
+	cv::cvtColor(masked_display, grayscale, cv::COLOR_BGR2GRAY);
+	cv::threshold(grayscale, binary, 1, 255, cv::THRESH_BINARY);
+
+	cv::findContours(binary, contours, cv::RETR_LIST, cv::CHAIN_APPROX_NONE);
+
+	std::vector<int> ids;
+	double area = 0;
+	double img_area = src.rows*src.cols;
+
+#if 1
+	std::cout << "Image Area: " << img_area << std::endl;
+	std::cout << "Lower bounds: " << 0.05*img_area << std::endl;
+	std::cout << "Upper bounds: " << 0.95*img_area << std::endl;
+#endif
+
+	for(size_t i = 0; i < contours.size(); i++)
 	{
-		//th_start_h0 = 20;
-		visualizer::slider::slider(
-			"/win0/upper_half/upper_rigth_corner/th_start_h0",
-			th_start_h0,
-			[&](int& value)
-			{
-				DEBUG(th_start_h0);
-			}
-		);
-
-		for(int i = 0; i < 3; i++)
+		area = cv::contourArea(contours[i]);
+#if 0
+		std::cout << "Area " << i << ": " << area << std::endl;
+#endif
+		if(area > 0.007*img_area && area < 0.95*img_area)
 		{
-			visualizer::slider::update();
-			DEBUG(th_start_h0);
-			sleep(1);
+			ids.push_back(i);
 		}
 	}
+
+	std::vector<std::vector<cv::Point>> contours_poly;
+	for(size_t i = 0; i < ids.size(); i++)
+	{
+		std::vector<cv::Point> base;
+		contours_poly.push_back(base);
+	}
+	std::vector<cv::Rect> boundRect;
+
+	for(size_t i = 0; i < ids.size(); i++)
+	{
+		cv::approxPolyDP(contours[ids[i]], contours_poly[i], 3, true);
+		boundRect.push_back(boundingRect(contours_poly[i]));
+	}
+
+	contour = cv::Mat::zeros(binary.size(), CV_8UC3);
+	for(size_t i = 0; i < ids.size(); i++)
+	{
+		cv::rectangle(contour, boundRect[i].tl(), boundRect[i].br(), cv::Scalar(255, 255, 255), 2);
+	}
+
+
+#if CONTOUR
+	cv::imwrite(contour_name, contour);
+#endif
+
+	DEBUG("END CONTOUR SEARCH");
+	//*/
+
+	///*
+	//CROP TO CONTOUR
+	DEBUG("START CROP");
+
+	std::string crop_name = opath + "_crop";
+	std::vector<cv::Mat> cropped;
+
+	for(size_t i = 0; i < ids.size(); i++)
+	{
+		cropped.push_back(src(boundRect[i]));
+	}
+
+#if RESULT
+	for(size_t i = 0; i < ids.size(); i++)
+	{
+		std::string i_name = crop_name + "_" + std::to_string(i) + ".jpg";
+		cv::imwrite(i_name, cropped[i]);
+	}
+#endif
+
+	DEBUG("END CROP");
+	//*/
+}
+
+int main()
+{
+	//PROCESS
+	std::string ipath = "./inputs/img_";
+	std::string opath = "./outputs/img_";
+
+	for(int i = 1; i < 516; i++)
+	{
+		std::cout << "Input: " << ipath + std::to_string(i) + ".jpg" << std::endl;
+		std::cout << "Output: " << opath + std::to_string(i) + "/out" << std::endl;
+		process(ipath + std::to_string(i) + ".jpg", opath + std::to_string(i) + "/out");
+	}
+
+	/*
+	ipath += std::to_string(0) + ".jpg";
+	opath += std::to_string(0);
+	std::cout << "Input: " << ipath << std::endl;
+	std::cout << "Output: " << opath << std::endl;
+	process(ipath, opath);
+	*/
 
 	return 0;
 }

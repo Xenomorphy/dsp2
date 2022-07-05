@@ -31,7 +31,7 @@ def prerequisites(ctx):
 
 def options(opt):
 	opt.load('compiler_cxx')
-	opt.recurse('visualizer')
+	#opt.recurse('visualizer')
 	
 	opt.add_option(
 		'--app',
@@ -42,10 +42,10 @@ def options(opt):
 
 def configure(cfg):
 	cfg.load('compiler_cxx')
-	cfg.recurse('visualizer')
+	#cfg.recurse('visualizer')
 
 	cfg.env.append_value('CXXFLAGS', '-std=c++17')
-	#cfg.env.append_value('LIB', 'pthread')
+	cfg.env.append_value('LIB', 'pthread')
 	cfg.env.append_value('CXXFLAGS', '-g -rdynamic'.split()) # For debug.
 
 
@@ -63,7 +63,7 @@ def configure(cfg):
 	)
 
 def build(bld):
-	bld.recurse('visualizer')
+	#bld.recurse('visualizer')
 	
 	bld.program(
 		target = 'main',
